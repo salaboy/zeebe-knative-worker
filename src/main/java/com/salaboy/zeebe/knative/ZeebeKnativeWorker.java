@@ -50,7 +50,7 @@ public class ZeebeKnativeWorker {
                 .withSource(URI.create("zeebe.default.svc.cluster.local"))
                 .withData(job.getVariables()) // from content
                 .withDatacontenttype("application/json")
-                .withSubject(String.valueOf(job.getWorkflowInstanceKey()))
+                .withSubject(String.valueOf(job.getWorkflowInstanceKey()) + ":" + job.getKey())
                 .build();
 
         if (workflowsPendingJobs.get(String.valueOf(job.getWorkflowInstanceKey())) == null) {
@@ -101,16 +101,25 @@ public class ZeebeKnativeWorker {
         System.out.println("> I got a cloud event: " + cloudEvent.toString());
         System.out.println("  -> cloud event attr: " + cloudEvent.getAttributes());
         System.out.println("  -> cloud event data: " + cloudEvent.getData());
-        String workflowId = cloudEvent.getAttributes().getSubject().get();
-        Set<String> pendingJobs = workflowsPendingJobs.get(workflowId);
-        if (!pendingJobs.isEmpty()) {
-            Iterator<String> it = pendingJobs.iterator();
-            if (it.hasNext()) {
-                String jobId = it.next();
-                jobClient.newCompleteCommand(Long.valueOf(jobId)).variables(cloudEvent.getData()).send().join();
 
-                pendingJobs.remove(jobId);
+
+        String subject = cloudEvent.getAttributes().getSubject().get();
+        String workflowId = subject.split(":")[0];
+        String jobId = subject.split(":")[1];
+
+        Set<String> pendingJobs = workflowsPendingJobs.get(workflowId);
+        if (pendingJobs != null) {
+            if (!pendingJobs.isEmpty()) {
+                if (pendingJobs.contains(jobId)) {
+                    jobClient.newCompleteCommand(Long.valueOf(jobId)).variables(cloudEvent.getData()).send().join();
+                    pendingJobs.remove(jobId);
+                }
+                System.out.println("Job Id: " + jobId + " not found");
+            } else {
+                System.out.println("This workflow Id: " + workflowId + " doesn't have any pending jobs");
             }
+        } else {
+            System.out.println("Workflow Id: " + workflowId + " not found");
         }
 
 
