@@ -33,7 +33,13 @@ public class ZeebeKnativeWorker {
         SpringApplication.run(ZeebeKnativeWorker.class, args);
     }
 
+    public enum MODES{
+        WAIT_FOR_CLOUD_EVENT,
+        EMIT_ONLY
+    }
+
     private Map<String, Set<String>> workflowsPendingJobs = new HashMap<>();
+
 
     @Autowired
     private JobClient jobClient;
@@ -41,7 +47,7 @@ public class ZeebeKnativeWorker {
     @ZeebeWorker(name = "knative-worker", type = "knative")
     public void genericKNativeWorker(final JobClient client, final ActivatedJob job) {
         logJob(job);
-
+        String mode = job.getCustomHeaders().get("mode");
         String host = job.getCustomHeaders().get("host"); //from headers
         final CloudEvent<AttributesImpl, String> myCloudEvent = CloudEventBuilder.<String>builder()
                 .withId(UUID.randomUUID().toString())
@@ -64,6 +70,10 @@ public class ZeebeKnativeWorker {
 
         postCloudEvent.bodyToMono(String.class).doOnError(t -> t.printStackTrace())
                 .doOnSuccess(s -> System.out.println("Result -> " + s)).subscribe();
+
+        if(mode == null || mode.equals("") || mode.equals(MODES.EMIT_ONLY)){
+            jobClient.newCompleteCommand(job.getKey()).send().join();
+        }
         //jobClient.newForwardedCommand()..
 
     }
