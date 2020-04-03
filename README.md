@@ -27,4 +27,16 @@ The worker expose HTTP Endpoints to recieve Cloud Events that can be propagated 
 - /signal POST -> Receive a Cloud Event that will be forwarded as a BPMN Signal for an Intermediate Catch Event 
 
 
+# Examples
 
+> zbctl deploy emit-wait.bpmn --insecure
+>
+> zbctl create instance EMIT_WAIT  --insecure
+>
+> curl -X POST localhost:8080/ -H "Content-Type: application/json" -H "Ce-Id: 536808d3" -H "Ce-Type: <WAIT_TYPE>" -H "Ce-Source: curl" -H "Ce-Subject: <WORKFLOW_INSTANCE_KEY>:<JOB_KEY>"  -d '{"name":"salaboy"}'  -v
+>
+
+EMIT AND CONTINUE:
+> zbctl deploy emit-and-continue.bpmn --insecure
+> zbctl create instance EMIT_AND_CONTINUE --variables "{\"myVarId\" : \"123\"}" --insecure
+>

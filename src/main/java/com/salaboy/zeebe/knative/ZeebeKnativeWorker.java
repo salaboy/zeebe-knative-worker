@@ -49,14 +49,14 @@ public class ZeebeKnativeWorker {
     private ZeebeClientLifecycle zeebeClient;
 
 
-    @ZeebeWorker(name = "knative-worker", type = "knative")
+    @ZeebeWorker(name = "knative-worker", type = "knative", timeout = 60 * 60 * 24 * 1000)
     public void genericKNativeWorker(final JobClient client, final ActivatedJob job) {
         logJob(job);
         //from headers
         String host = job.getCustomHeaders().get(Headers.HOST);
         String mode = job.getCustomHeaders().get(Headers.MODE);
         String waitForCloudEventType = "";
-        if (mode != null && mode.equals(WORKER_MODES.WAIT_FOR_CLOUD_EVENT)) {
+        if (mode != null && mode.equals(WORKER_MODES.WAIT_FOR_CLOUD_EVENT.name())) {
             waitForCloudEventType = job.getCustomHeaders().get(Headers.CLOUD_EVENT_WAIT_TYPE);
         }
 
@@ -80,7 +80,7 @@ public class ZeebeKnativeWorker {
         postCloudEvent.bodyToMono(String.class).doOnError(t -> t.printStackTrace())
                 .doOnSuccess(s -> System.out.println("Result -> " + s)).subscribe();
 
-        if (mode == null || mode.equals("") || mode.equals(WORKER_MODES.EMIT_ONLY)) {
+        if (mode == null || mode.equals("") || mode.equals(WORKER_MODES.EMIT_ONLY.name())) {
             jobClient.newCompleteCommand(job.getKey()).send().join();
         }
         // Else.. I should indicate to the job client that I've delegated the service call to an external component
@@ -109,7 +109,7 @@ public class ZeebeKnativeWorker {
                 job.getVariables());
     }
 
-    @GetMapping
+    @GetMapping("/")
     public void printPendingJobs() {
         System.out.println("Pending Jobs per Workflow: ");
         mappingsService.getAllPendingJobs().forEach((k, v) -> {
@@ -137,8 +137,9 @@ public class ZeebeKnativeWorker {
                 if (pendingJobs.contains(jobKey)) {
                     jobClient.newCompleteCommand(Long.valueOf(jobKey)).variables(cloudEvent.getData()).send().join();
                     mappingsService.removePendingJobFromWorkflow(workflowInstanceKey, jobKey);
+                }else {
+                    System.out.println("Job Key: " + jobKey + " not found");
                 }
-                System.out.println("Job Key: " + jobKey + " not found");
             } else {
                 System.out.println("This workflow instance key: " + workflowInstanceKey + " doesn't have any pending jobs");
             }
@@ -151,8 +152,8 @@ public class ZeebeKnativeWorker {
     }
 
 
-    @PostMapping("/signal")
-    public String recieveCloudEventForSignal(@RequestHeader Map<String, String> headers, @RequestBody Object body) {
+    @PostMapping("/message")
+    public String recieveCloudEventForMessage(@RequestHeader Map<String, String> headers, @RequestBody Object body) {
         CloudEvent<AttributesImpl, String> cloudEvent = CloudEventsHelper.parseFromRequest(headers, body);
         System.out.println("> I got a cloud event: " + cloudEvent.toString());
         System.out.println("  -> cloud event attr: " + cloudEvent.getAttributes());
