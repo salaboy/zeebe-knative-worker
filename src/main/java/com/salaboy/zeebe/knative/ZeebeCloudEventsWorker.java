@@ -22,15 +22,16 @@ import java.net.URI;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @SpringBootApplication
 @EnableZeebeClient
 @Slf4j
 @RestController
-public class ZeebeKnativeWorker {
+public class ZeebeCloudEventsWorker {
 
     public static void main(String[] args) {
-        SpringApplication.run(ZeebeKnativeWorker.class, args);
+        SpringApplication.run(ZeebeCloudEventsWorker.class, args);
     }
 
     public enum WORKER_MODES {
@@ -39,7 +40,7 @@ public class ZeebeKnativeWorker {
     }
 
     @Autowired
-    private KnativeZeebeMappingsService mappingsService;
+    private CloudEventsZeebeMappingsService mappingsService;
 
 
     @Autowired
@@ -49,6 +50,8 @@ public class ZeebeKnativeWorker {
     private ZeebeClientLifecycle zeebeClient;
 
 
+
+
     @ZeebeWorker(name = "knative-worker", type = "knative", timeout = 60 * 60 * 24 * 1000)
     public void genericKNativeWorker(final JobClient client, final ActivatedJob job) {
         logJob(job);
@@ -56,11 +59,25 @@ public class ZeebeKnativeWorker {
         String host = job.getCustomHeaders().get(Headers.HOST);
         String mode = job.getCustomHeaders().get(Headers.MODE);
         String waitForCloudEventType = "";
+
+
+
+
         if (mode != null && mode.equals(WORKER_MODES.WAIT_FOR_CLOUD_EVENT.name())) {
             waitForCloudEventType = job.getCustomHeaders().get(Headers.CLOUD_EVENT_WAIT_TYPE);
+            mappingsService.addPendingJob(String.valueOf(job.getWorkflowInstanceKey()), String.valueOf(job.getKey()));
+            //jobClient.newForwardedCommand()..
+            emitCloudEventHTTP(job, host);
+        }else if (mode == null || mode.equals("") || mode.equals(WORKER_MODES.EMIT_ONLY.name())) {
+            jobClient.newCompleteCommand(job.getKey()).send().join();
+            emitCloudEventHTTP(job, host);
         }
 
 
+
+    }
+
+    private void emitCloudEventHTTP(ActivatedJob job, String host) {
         final CloudEvent<AttributesImpl, String> myCloudEvent = CloudEventBuilder.<String>builder()
                 .withId(UUID.randomUUID().toString())
                 .withTime(ZonedDateTime.now())
@@ -71,7 +88,6 @@ public class ZeebeKnativeWorker {
                 .withSubject(String.valueOf(job.getWorkflowInstanceKey()) + ":" + job.getKey())
                 .build();
 
-        mappingsService.addPendingJob(String.valueOf(job.getWorkflowInstanceKey()), String.valueOf(job.getKey()));
 
         WebClient webClient = WebClient.builder().baseUrl(host).filter(logRequest()).build();
 
@@ -79,13 +95,6 @@ public class ZeebeKnativeWorker {
 
         postCloudEvent.bodyToMono(String.class).doOnError(t -> t.printStackTrace())
                 .doOnSuccess(s -> System.out.println("Result -> " + s)).subscribe();
-
-        if (mode == null || mode.equals("") || mode.equals(WORKER_MODES.EMIT_ONLY.name())) {
-            jobClient.newCompleteCommand(job.getKey()).send().join();
-        }
-        // Else.. I should indicate to the job client that I've delegated the service call to an external component
-        //jobClient.newForwardedCommand()..
-
     }
 
 
@@ -109,14 +118,20 @@ public class ZeebeKnativeWorker {
                 job.getVariables());
     }
 
-    @GetMapping("/")
-    public void printPendingJobs() {
-        System.out.println("Pending Jobs per Workflow: ");
-        mappingsService.getAllPendingJobs().forEach((k, v) -> {
-                    System.out.println("Workflow Instance Key: " + k + " ->  ");
-                    v.forEach(j -> System.out.println("Job Key: " + j));
-                }
-        );
+    @GetMapping("/jobs")
+    public String printPendingJobs() {
+        Map<String, Set<String>> jobs = mappingsService.getAllPendingJobs();
+        return jobs.keySet().stream()
+                .map(key -> key + "=" + jobs.get(key))
+                .collect(Collectors.joining(", ", "{", "}"));
+    }
+
+    @GetMapping("/messages")
+    public String messages() {
+        Map<String, Set<String>> allExpectedBPMNMessages = mappingsService.getAllExpectedBPMNMessages();
+        return allExpectedBPMNMessages.keySet().stream()
+                .map(key -> key + "=" + allExpectedBPMNMessages.get(key))
+                .collect(Collectors.joining(", ", "{", "}"));
     }
 
     @PostMapping("/")
@@ -160,11 +175,21 @@ public class ZeebeKnativeWorker {
         System.out.println("  -> cloud event data: " + cloudEvent.getData());
 
 
+        String cloudEventType = cloudEvent.getAttributes().getType();
+        // match type with expected messages
+
+
         String subject = cloudEvent.getAttributes().getSubject().get();
-        String workflowId = subject.split(":")[0];
-        String jobId = subject.split(":")[1];
+        String[] subjectArray = subject.split(":");
+        String workflowKey = subjectArray[0];
+        String workflowId = subjectArray[1];
+
+        mappingsService.getExpectedBPMNMessagesByWorkflowKey(workflowKey);
+
+
+
         Optional<String> data = cloudEvent.getData();
-        String correlationKey = (String) cloudEvent.getExtensions().get("correlationKey");
+        String correlationKey = (String) cloudEvent.getExtensions().get("CorrelationKey");
 
         zeebeClient.newPublishMessageCommand()
                 .messageName("Cloud Event Response")

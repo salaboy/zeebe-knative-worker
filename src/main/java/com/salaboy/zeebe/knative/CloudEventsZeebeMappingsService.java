@@ -8,12 +8,16 @@ import java.util.Map;
 import java.util.Set;
 
 @Service
-public class KnativeZeebeMappingsService {
+public class CloudEventsZeebeMappingsService {
 
     private Map<String, Set<String>> workflowsPendingJobs = new HashMap<>();
 
     private Map<String, Set<String>> expectedBPMNMessages = new HashMap<>();
 
+    public CloudEventsZeebeMappingsService() {
+        expectedBPMNMessages.put("2251799813685322", new HashSet<String>());
+        expectedBPMNMessages.get("2251799813685322").add("Cloud Event Response");
+    }
 
     public void addPendingJob(String workflowInstanceKey, String jobKey) {
         if (workflowsPendingJobs.get(String.valueOf(workflowInstanceKey)) == null) {
@@ -35,7 +39,18 @@ public class KnativeZeebeMappingsService {
         workflowsPendingJobs.get(workflowInstanceKey).remove(jobKey);
     }
 
-    public void addExpectedBPMNMessage(String workflowKey, String messageName){
+    public void addExpectedBPMNMessage(String workflowKey, String messageName) {
+        if (expectedBPMNMessages.get(String.valueOf(workflowKey)) == null) {
+            expectedBPMNMessages.put(String.valueOf(workflowKey), new HashSet<>());
+        }
+        expectedBPMNMessages.get(workflowKey).add(String.valueOf(messageName));
+    }
 
+    public Map<String, Set<String>> getAllExpectedBPMNMessages() {
+        return expectedBPMNMessages;
+    }
+
+    public Set<String> getExpectedBPMNMessagesByWorkflowKey(String workflowKey) {
+        return expectedBPMNMessages.get(workflowKey);
     }
 }

@@ -39,4 +39,4 @@ The worker expose HTTP Endpoints to recieve Cloud Events that can be propagated 
 EMIT AND CONTINUE:
 > zbctl deploy emit-and-continue.bpmn --insecure
 > zbctl create instance EMIT_AND_CONTINUE --variables "{\"myVarId\" : \"123\"}" --insecure
->
+> curl -X POST localhost:8080/ -H "Content-Type: application/json" -H "Ce-Id: 536808d3" -H "Ce-Type: <WAIT_TYPE>" -H "Ce-Source: curl" -H "Ce-Subject: <WORKFLOW_INSTANCE_KEY>:<JOB_KEY>" -H Ce-CorrelationKey: <CORRELATION_KEY>" -d '{"name":"salaboy"}'  -v
