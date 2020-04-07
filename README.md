@@ -23,8 +23,8 @@ The worker has two modes:
 
 The worker expose HTTP Endpoints to recieve Cloud Events that can be propagated to workflows. 
 
-- / POST - > Receive Cloud Event via HTTP
-- /signal POST -> Receive a Cloud Event that will be forwarded as a BPMN Signal for an Intermediate Catch Event 
+- / POST - > Receive Cloud Event via HTTP that will map to a Job
+- /message POST -> Receive a Cloud Event that will be forwarded as a BPMN Message for an Intermediate Catch Event 
 
 
 # Examples
@@ -33,10 +33,10 @@ The worker expose HTTP Endpoints to recieve Cloud Events that can be propagated 
 >
 > zbctl create instance EMIT_WAIT  --insecure
 >
-> curl -X POST localhost:8080/ -H "Content-Type: application/json" -H "Ce-Id: 536808d3" -H "Ce-Type: <WAIT_TYPE>" -H "Ce-Source: curl" -H "Ce-Subject: <WORKFLOW_INSTANCE_KEY>:<JOB_KEY>"  -d '{"name":"salaboy"}'  -v
+> curl -X POST localhost:8080/ -H "Content-Type: application/json" -H "Ce-Id: 536808d3" -H "Ce-Type: <WAIT_TYPE>" -H "Ce-Source: curl" -H "Ce-Subject: <WORKFLOW_KEY>:<WORKFLOW_INSTANCE_KEY>:<JOB_KEY>"  -d '{"name":"salaboy"}'  -v
 >
 
 EMIT AND CONTINUE:
 > zbctl deploy emit-and-continue.bpmn --insecure
 > zbctl create instance EMIT_AND_CONTINUE --variables "{\"myVarId\" : \"123\"}" --insecure
-> curl -X POST localhost:8080/ -H "Content-Type: application/json" -H "Ce-Id: 536808d3" -H "Ce-Type: <WAIT_TYPE>" -H "Ce-Source: curl" -H "Ce-Subject: <WORKFLOW_INSTANCE_KEY>:<JOB_KEY>" -H Ce-CorrelationKey: <CORRELATION_KEY>" -d '{"name":"salaboy"}'  -v
+>  curl -X POST localhost:8080/message -H "Content-Type: application/json" -H "Ce-Id: 536808d3" -H "Ce-Type: Cloud Event Response" -H "Ce-Source: curl" -H "Ce-Subject: 2251799813685322:1:2" -H "CorrelationKey: 123" -d '{"name":"salaboy"}'  -v 

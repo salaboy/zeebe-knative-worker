@@ -2,6 +2,8 @@ package com.salaboy.zeebe.knative;
 
 import com.salaboy.cloudevents.helper.CloudEventsHelper;
 import io.cloudevents.CloudEvent;
+import io.cloudevents.extensions.ExtensionFormat;
+import io.cloudevents.json.Json;
 import io.cloudevents.v03.AttributesImpl;
 import io.cloudevents.v03.CloudEventBuilder;
 import io.zeebe.spring.client.ZeebeClientLifecycle;
@@ -50,8 +52,6 @@ public class ZeebeCloudEventsWorker {
     private ZeebeClientLifecycle zeebeClient;
 
 
-
-
     @ZeebeWorker(name = "knative-worker", type = "knative", timeout = 60 * 60 * 24 * 1000)
     public void genericKNativeWorker(final JobClient client, final ActivatedJob job) {
         logJob(job);
@@ -61,18 +61,15 @@ public class ZeebeCloudEventsWorker {
         String waitForCloudEventType = "";
 
 
-
-
         if (mode != null && mode.equals(WORKER_MODES.WAIT_FOR_CLOUD_EVENT.name())) {
             waitForCloudEventType = job.getCustomHeaders().get(Headers.CLOUD_EVENT_WAIT_TYPE);
             mappingsService.addPendingJob(String.valueOf(job.getWorkflowInstanceKey()), String.valueOf(job.getKey()));
             //jobClient.newForwardedCommand()..
             emitCloudEventHTTP(job, host);
-        }else if (mode == null || mode.equals("") || mode.equals(WORKER_MODES.EMIT_ONLY.name())) {
+        } else if (mode == null || mode.equals("") || mode.equals(WORKER_MODES.EMIT_ONLY.name())) {
             jobClient.newCompleteCommand(job.getKey()).send().join();
             emitCloudEventHTTP(job, host);
         }
-
 
 
     }
@@ -85,7 +82,7 @@ public class ZeebeCloudEventsWorker {
                 .withSource(URI.create("zeebe.default.svc.cluster.local"))
                 .withData(job.getVariables()) // from content
                 .withDatacontenttype(Headers.CONTENT_TYPE)
-                .withSubject(String.valueOf(job.getWorkflowInstanceKey()) + ":" + job.getKey())
+                .withSubject(String.valueOf(job.getWorkflowKey() + ":" + job.getWorkflowInstanceKey()) + ":" + job.getKey())
                 .build();
 
 
@@ -128,7 +125,7 @@ public class ZeebeCloudEventsWorker {
 
     @GetMapping("/messages")
     public String messages() {
-        Map<String, Set<String>> allExpectedBPMNMessages = mappingsService.getAllExpectedBPMNMessages();
+        Map<String, Set<String>> allExpectedBPMNMessages = mappingsService.getAllMessages();
         return allExpectedBPMNMessages.keySet().stream()
                 .map(key -> key + "=" + allExpectedBPMNMessages.get(key))
                 .collect(Collectors.joining(", ", "{", "}"));
@@ -143,8 +140,9 @@ public class ZeebeCloudEventsWorker {
 
 
         String subject = cloudEvent.getAttributes().getSubject().get();
-        String workflowInstanceKey = subject.split(":")[0];
-        String jobKey = subject.split(":")[1];
+        String workflowKey = subject.split(":")[0];
+        String workflowInstanceKey = subject.split(":")[1];
+        String jobKey = subject.split(":")[2];
 
         Set<String> pendingJobs = mappingsService.getPendingJobsForWorkflow(workflowInstanceKey);
         if (pendingJobs != null) {
@@ -152,7 +150,7 @@ public class ZeebeCloudEventsWorker {
                 if (pendingJobs.contains(jobKey)) {
                     jobClient.newCompleteCommand(Long.valueOf(jobKey)).variables(cloudEvent.getData()).send().join();
                     mappingsService.removePendingJobFromWorkflow(workflowInstanceKey, jobKey);
-                }else {
+                } else {
                     System.out.println("Job Key: " + jobKey + " not found");
                 }
             } else {
@@ -166,37 +164,50 @@ public class ZeebeCloudEventsWorker {
         return "OK!";
     }
 
+    @PostMapping("/messages")
+    public void addExpectedMessage(@RequestBody MessageForWorkflowKey messageForWorkflowKey) {
+        mappingsService.addMessageForWorkflowKey(messageForWorkflowKey.getWorkflowKey(), messageForWorkflowKey.getMessageName());
+    }
 
     @PostMapping("/message")
     public String recieveCloudEventForMessage(@RequestHeader Map<String, String> headers, @RequestBody Object body) {
-        CloudEvent<AttributesImpl, String> cloudEvent = CloudEventsHelper.parseFromRequest(headers, body);
-        System.out.println("> I got a cloud event: " + cloudEvent.toString());
-        System.out.println("  -> cloud event attr: " + cloudEvent.getAttributes());
-        System.out.println("  -> cloud event data: " + cloudEvent.getData());
+        ZeebeCloudEventExtension zeebeCloudEventExtension = new ZeebeCloudEventExtension();
+        // I need to do the HTTP to Cloud Events mapping here, that means picking up the CorrelationKey header and add it to the Cloud Event
+        zeebeCloudEventExtension.setCorrelationKey(headers.get(Headers.CORRELATION_KEY));
+        final ExtensionFormat zeebe = new ZeebeCloudEventExtension.Format(zeebeCloudEventExtension);
+
+        CloudEvent<AttributesImpl, String> cloudEvent = CloudEventsHelper.parseFromRequestWithExtension(headers, body, zeebe);
+        final String json = Json.encode(cloudEvent);
+        System.out.println("Cloud Event: " + json);
+//        System.out.println("> I got a cloud event: " + cloudEvent.toString());
+//        System.out.println("  -> cloud event attr: " + cloudEvent.getAttributes());
+//        System.out.println("  -> cloud event data: " + cloudEvent.getData());
 
 
-        String cloudEventType = cloudEvent.getAttributes().getType();
         // match type with expected messages
 
 
         String subject = cloudEvent.getAttributes().getSubject().get();
         String[] subjectArray = subject.split(":");
         String workflowKey = subjectArray[0];
-        String workflowId = subjectArray[1];
-
-        mappingsService.getExpectedBPMNMessagesByWorkflowKey(workflowKey);
-
+        String workflowInstanceKey = subjectArray[1];
+        String jobKey =subjectArray[2];
 
 
-        Optional<String> data = cloudEvent.getData();
-        String correlationKey = (String) cloudEvent.getExtensions().get("CorrelationKey");
 
-        zeebeClient.newPublishMessageCommand()
-                .messageName("Cloud Event Response")
-                .correlationKey(correlationKey)
-                .variables(data.get())
-                .send().join();
+        String cloudEventType = cloudEvent.getAttributes().getType();
+        String correlationKey = ((ZeebeCloudEventExtension) cloudEvent.getExtensions().get("zeebe")).getCorrelationKey();
 
+
+        Set<String> messagesByWorkflowKey = mappingsService.getMessagesByWorkflowKey(workflowKey);
+        if (messagesByWorkflowKey.contains(cloudEventType)) {
+
+            zeebeClient.newPublishMessageCommand()
+                    .messageName(cloudEventType)
+                    .correlationKey(correlationKey)
+                    .variables(cloudEvent.getData())
+                    .send().join();
+        }
 
         return "OK!";
     }

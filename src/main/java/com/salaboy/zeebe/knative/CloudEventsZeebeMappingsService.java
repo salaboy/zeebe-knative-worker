@@ -12,11 +12,11 @@ public class CloudEventsZeebeMappingsService {
 
     private Map<String, Set<String>> workflowsPendingJobs = new HashMap<>();
 
-    private Map<String, Set<String>> expectedBPMNMessages = new HashMap<>();
+    private Map<String, Set<String>> messagesByWorkflowKey = new HashMap<>();
 
     public CloudEventsZeebeMappingsService() {
-        expectedBPMNMessages.put("2251799813685322", new HashSet<String>());
-        expectedBPMNMessages.get("2251799813685322").add("Cloud Event Response");
+//        messagesByWorkflowKey.put("2251799813685322", new HashSet<String>());
+//        messagesByWorkflowKey.get("2251799813685322").add("Cloud Event Response");
     }
 
     public void addPendingJob(String workflowInstanceKey, String jobKey) {
@@ -39,18 +39,18 @@ public class CloudEventsZeebeMappingsService {
         workflowsPendingJobs.get(workflowInstanceKey).remove(jobKey);
     }
 
-    public void addExpectedBPMNMessage(String workflowKey, String messageName) {
-        if (expectedBPMNMessages.get(String.valueOf(workflowKey)) == null) {
-            expectedBPMNMessages.put(String.valueOf(workflowKey), new HashSet<>());
+    public void addMessageForWorkflowKey(String workflowKey, String messageName) {
+        if (messagesByWorkflowKey.get(String.valueOf(workflowKey)) == null) {
+            messagesByWorkflowKey.put(String.valueOf(workflowKey), new HashSet<>());
         }
-        expectedBPMNMessages.get(workflowKey).add(String.valueOf(messageName));
+        messagesByWorkflowKey.get(workflowKey).add(String.valueOf(messageName));
     }
 
-    public Map<String, Set<String>> getAllExpectedBPMNMessages() {
-        return expectedBPMNMessages;
+    public Map<String, Set<String>> getAllMessages() {
+        return messagesByWorkflowKey;
     }
 
-    public Set<String> getExpectedBPMNMessagesByWorkflowKey(String workflowKey) {
-        return expectedBPMNMessages.get(workflowKey);
+    public Set<String> getMessagesByWorkflowKey(String workflowKey) {
+        return messagesByWorkflowKey.get(workflowKey);
     }
 }
