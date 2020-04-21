@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>com.salaboy.zeebe</groupId>
 	<artifactId>zeebe-knative-worker</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>0.0.10</version>
 	<name>Zeebe Worker for Knative / Cloud Events</name>
 	<description>Zeebe Worker for Knative / Cloud Events</description>
 
