@@ -4,7 +4,7 @@ import io.cloudevents.extensions.ExtensionFormat;
 import io.cloudevents.extensions.InMemoryFormat;
 
 import java.util.*;
-
+// @TODO: can this live in a library?
 public class ZeebeCloudEventExtension {
     private String correlationKey;
 
@@ -22,6 +22,11 @@ public class ZeebeCloudEventExtension {
         if (o == null || getClass() != o.getClass()) return false;
         ZeebeCloudEventExtension that = (ZeebeCloudEventExtension) o;
         return Objects.equals(correlationKey, that.correlationKey);
+    }
+
+    @Override
+    public String toString() {
+        return "correlationKey:" + correlationKey;
     }
 
     @Override

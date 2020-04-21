@@ -29,6 +29,8 @@ The worker expose HTTP Endpoints to recieve Cloud Events that can be propagated 
 
 # Examples
 
+## EMIT and WAIT
+
 > zbctl deploy emit-wait.bpmn --insecure
 >
 > zbctl create instance EMIT_WAIT  --insecure
@@ -36,7 +38,19 @@ The worker expose HTTP Endpoints to recieve Cloud Events that can be propagated 
 > curl -X POST localhost:8080/ -H "Content-Type: application/json" -H "Ce-Id: 536808d3" -H "Ce-Type: <WAIT_TYPE>" -H "Ce-Source: curl" -H "Ce-Subject: <WORKFLOW_KEY>:<WORKFLOW_INSTANCE_KEY>:<JOB_KEY>"  -d '{"name":"salaboy"}'  -v
 >
 
-EMIT AND CONTINUE:
+## EMIT and CONTINUE:
 > zbctl deploy emit-and-continue.bpmn --insecure
 > zbctl create instance EMIT_AND_CONTINUE --variables "{\"myVarId\" : \"123\"}" --insecure
->  curl -X POST localhost:8080/message -H "Content-Type: application/json" -H "Ce-Id: 536808d3" -H "Ce-Type: Cloud Event Response" -H "Ce-Source: curl" -H "Ce-Subject: 2251799813685322:1:2" -H "CorrelationKey: 123" -d '{"name":"salaboy"}'  -v 
+>  curl -X POST localhost:8080/message -H "Content-Type: application/json" -H "Ce-Id: 536808d3" -H "Ce-Type: Cloud Event Response" -H "Ce-Source: curl" -H "CorrelationKey: 123" -d '{"name":"salaboy"}'  -v 
+
+
+## TICKETS
+Deploy workflow
+> zbctl deploy tickets.bpmn --insecure
+
+Register Tickets.Purchase event to Start Workflow
+> curl -X POST http://localhost:8080/workflows -H "Content-Type: application/json" -d '{"cloudEventType" : "Tickets.Purchase", "workflowKey" : "2251799813690282"}'
+
+Send Tickets.Purchase to start a workflow
+> curl -X POST http://localhost:8080/workflow -H "Content-Type: application/json" -H "Ce-Id: 536808d33" -H "Ce-Type: Tickets.Purchase" -H "Ce-Source: curl" -d '{"sessionId":"5" }'
+             

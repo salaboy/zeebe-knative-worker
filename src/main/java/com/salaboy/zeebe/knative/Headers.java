@@ -8,4 +8,5 @@ public class Headers {
 
     public static final String CONTENT_TYPE = "application/json";
     public static final String CORRELATION_KEY = "CorrelationKey";
+    public static final String ZEEBE_CLOUD_EVENTS_EXTENSION = "zeebe";
 }
