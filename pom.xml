@@ -11,8 +11,8 @@
 	<groupId>com.salaboy.zeebe</groupId>
 	<artifactId>zeebe-knative-worker</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>Zeebe Worker for Knative / Cloud Events</name>
-	<description>Zeebe Worker for Knative / Cloud Events</description>
+	<name>Zeebe Cloud Events Router</name>
+	<description>Zeebe Cloud Events Router</description>
 
 	<properties>
 		<java.version>11</java.version>
@@ -38,7 +38,7 @@
 		</dependency>
 		<dependency>
 			<groupId>com.github.salaboy</groupId>
-			<artifactId>spring-boot-starter-webflux-cloudevents</artifactId>
+			<artifactId>zeebe-cloud-events-java-sdk</artifactId>
 			<version>master-SNAPSHOT</version>
 		</dependency>
 		<dependency>

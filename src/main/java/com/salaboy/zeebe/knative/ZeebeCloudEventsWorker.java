@@ -2,10 +2,9 @@ package com.salaboy.zeebe.knative;
 
 import com.salaboy.cloudevents.helper.CloudEventsHelper;
 import io.cloudevents.CloudEvent;
-import io.cloudevents.extensions.ExtensionFormat;
 import io.cloudevents.json.Json;
 import io.cloudevents.v03.AttributesImpl;
-import io.cloudevents.v03.CloudEventBuilder;
+import io.zeebe.cloudevents.*;
 import io.zeebe.spring.client.ZeebeClientLifecycle;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
@@ -20,9 +19,7 @@ import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
-import java.net.URI;
 import java.time.Instant;
-import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -53,7 +50,7 @@ public class ZeebeCloudEventsWorker {
     private ZeebeClientLifecycle zeebeClient;
 
     //@TODO: refactor to worker class
-    @ZeebeWorker(name = "knative-worker", type = "knative", timeout = 60 * 60 * 24 * 1000)
+    @ZeebeWorker(name = "cloudevents-router", type = "cloudevents", timeout = 60 * 60 * 24 * 1000)
     public void genericKNativeWorker(final JobClient client, final ActivatedJob job) {
         logJob(job);
         //from headers
@@ -82,16 +79,10 @@ public class ZeebeCloudEventsWorker {
     }
     //@TODO: refactor to helper class
     private void emitCloudEventHTTP(ActivatedJob job, String host) {
-        final CloudEvent<AttributesImpl, String> myCloudEvent = CloudEventBuilder.<String>builder()
-                .withId(UUID.randomUUID().toString())
-                .withTime(ZonedDateTime.now())
-                .withType(job.getCustomHeaders().get(Headers.CLOUD_EVENT_TYPE)) // from headers
-                .withSource(URI.create("zeebe.default.svc.cluster.local"))
-                .withData(job.getVariables()) // from content
-                .withDatacontenttype(Headers.CONTENT_TYPE)
-                .withSubject(String.valueOf(job.getWorkflowKey() + ":" + job.getWorkflowInstanceKey()) + ":" + job.getKey())
-                .build();
 
+        final CloudEvent<AttributesImpl, String> myCloudEvent = ZeebeCloudEventsHelper.createZeebeCloudEventFromJob(job);
+
+        log.info(Json.encode(myCloudEvent));
 
         WebClient webClient = WebClient.builder().baseUrl(host).filter(logRequest()).build();
 
@@ -144,31 +135,38 @@ public class ZeebeCloudEventsWorker {
     //@TODO: create controller class
     @PostMapping("/")
     public String recieveCloudEvent(@RequestHeader Map<String, String> headers, @RequestBody Object body) {
-        CloudEvent<AttributesImpl, String> cloudEvent = CloudEventsHelper.parseFromRequest(headers, body);
+        CloudEvent<AttributesImpl, String> cloudEvent = ZeebeCloudEventsHelper.parseZeebeCloudEventFromRequest(headers, body);
 
         final String json = Json.encode(cloudEvent);
-        log.info("Cloud Event: " + json);
+        log.debug("Cloud Event: " + json);
 
-        String subject = cloudEvent.getAttributes().getSubject().get();
-        String workflowKey = subject.split(":")[0];
-        String workflowInstanceKey = subject.split(":")[1];
-        String jobKey = subject.split(":")[2];
+        ZeebeCloudEventExtension zeebeCloudEventExtension =  (ZeebeCloudEventExtension) cloudEvent.getExtensions().get("zeebe");
+        if(zeebeCloudEventExtension != null) {
+            String workflowKey = zeebeCloudEventExtension.getWorkflowKey();
+            String workflowInstanceKey = zeebeCloudEventExtension.getWorkflowInstanceKey();
+            String jobKey = zeebeCloudEventExtension.getJobKey();
 
-        Set<String> pendingJobs = mappingsService.getPendingJobsForWorkflowKey(workflowKey).get(workflowInstanceKey);
-        if (pendingJobs != null) {
-            if (!pendingJobs.isEmpty()) {
-                if (pendingJobs.contains(jobKey)) {
-                    //@TODO: deal with Optionals for Data
-                    jobClient.newCompleteCommand(Long.valueOf(jobKey)).variables(cloudEvent.getData().get()).send().join();
-                    mappingsService.removePendingJobFromWorkflow(workflowKey, workflowInstanceKey, jobKey);
+            Set<String> pendingJobs = mappingsService.getPendingJobsForWorkflowKey(workflowKey).get(workflowInstanceKey);
+            if (pendingJobs != null) {
+                if (!pendingJobs.isEmpty()) {
+                    if (pendingJobs.contains(jobKey)) {
+                        //@TODO: deal with Optionals for Data
+                        jobClient.newCompleteCommand(Long.valueOf(jobKey)).variables(cloudEvent.getData().get()).send().join();
+                        mappingsService.removePendingJobFromWorkflow(workflowKey, workflowInstanceKey, jobKey);
+                    } else {
+                        log.error("Job Key: " + jobKey + " not found");
+                        throw new IllegalStateException("Job Key: " + jobKey + " not found");
+                    }
                 } else {
-                    log.info("Job Key: " + jobKey + " not found");
+                    log.error("This workflow instance key: " + workflowInstanceKey + " doesn't have any pending jobs");
+                    throw new IllegalStateException("This workflow instance key: " + workflowInstanceKey + " doesn't have any pending jobs");
                 }
             } else {
-                log.info("This workflow instance key: " + workflowInstanceKey + " doesn't have any pending jobs");
+                log.error("Workflow instance key: " + workflowInstanceKey + " not found");
+                throw new IllegalStateException("Workflow instance key: " + workflowInstanceKey + " not found");
             }
-        } else {
-            log.info("Workflow instance key: " + workflowInstanceKey + " not found");
+        }else{
+            throw new IllegalStateException("Cloud Event recieved doesn't have Zeebe Extension, which is required to complete a job");
         }
 
         // @TODO: decide on return types
@@ -210,17 +208,7 @@ public class ZeebeCloudEventsWorker {
     //@TODO: create controller class
     @PostMapping("/message")
     public String recieveCloudEventForMessage(@RequestHeader Map<String, String> headers, @RequestBody Object body) {
-        ZeebeCloudEventExtension zeebeCloudEventExtension = new ZeebeCloudEventExtension();
-        // I need to do the HTTP to Cloud Events mapping here, that means picking up the CorrelationKey header and add it to the Cloud Event
-        String extension = headers.get(Headers.ZEEBE_CLOUD_EVENTS_EXTENSION);
-        //@TODO: marshal to a type so I can use an Object here instead of a split
-        String[] extensionsArray = extension.split(":");
-        if(extensionsArray.length == 2) {
-            zeebeCloudEventExtension.setCorrelationKey(extensionsArray[1]);
-        }
-        final ExtensionFormat zeebe = new ZeebeCloudEventExtension.Format(zeebeCloudEventExtension);
-
-        CloudEvent<AttributesImpl, String> cloudEvent = CloudEventsHelper.parseFromRequestWithExtension(headers, body, zeebe);
+        CloudEvent<AttributesImpl, String> cloudEvent = ZeebeCloudEventsHelper.parseZeebeCloudEventFromRequest(headers, body);
         final String json = Json.encode(cloudEvent);
         log.info("Cloud Event: " + json);
 
