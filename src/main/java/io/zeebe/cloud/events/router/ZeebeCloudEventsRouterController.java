@@ -1,120 +1,35 @@
-package com.salaboy.zeebe.knative;
+package io.zeebe.cloud.events.router;
 
 import com.salaboy.cloudevents.helper.CloudEventsHelper;
 import io.cloudevents.CloudEvent;
 import io.cloudevents.json.Json;
 import io.cloudevents.v03.AttributesImpl;
-import io.zeebe.cloudevents.*;
-import io.zeebe.spring.client.ZeebeClientLifecycle;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import io.zeebe.spring.client.EnableZeebeClient;
-import io.zeebe.spring.client.annotation.ZeebeWorker;
-import lombok.extern.slf4j.Slf4j;
 import io.zeebe.client.api.worker.JobClient;
-import io.zeebe.client.api.response.ActivatedJob;
+import io.zeebe.cloudevents.ZeebeCloudEventExtension;
+import io.zeebe.cloudevents.ZeebeCloudEventsHelper;
+import io.zeebe.spring.client.ZeebeClientLifecycle;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
-import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Mono;
 
-import java.time.Instant;
-import java.util.*;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
-@SpringBootApplication
-@EnableZeebeClient
-@Slf4j
 @RestController
-public class ZeebeCloudEventsWorker {
-
-    public static void main(String[] args) {
-        SpringApplication.run(ZeebeCloudEventsWorker.class, args);
-    }
-
-    public enum WORKER_MODES {
-        WAIT_FOR_CLOUD_EVENT,
-        EMIT_ONLY
-    }
-
-    @Autowired
-    private CloudEventsZeebeMappingsService mappingsService;
-
-
-
-    @Autowired
-    private JobClient jobClient;
+@Slf4j
+public class ZeebeCloudEventsRouterController {
 
     @Autowired
     private ZeebeClientLifecycle zeebeClient;
 
-    //@TODO: refactor to worker class
-    @ZeebeWorker(name = "cloudevents-router", type = "cloudevents", timeout = 60 * 60 * 24 * 1000)
-    public void genericKNativeWorker(final JobClient client, final ActivatedJob job) {
-        logJob(job);
-        //from headers
-        //@TODO: deal with empty headers for HOST and MODE
-        String host = job.getCustomHeaders().get(Headers.HOST);
-        String mode = job.getCustomHeaders().get(Headers.MODE);
-        String waitForCloudEventType = "";
 
+    @Autowired
+    private CloudEventsZeebeMappingsService mappingsService;
 
-        if (mode != null && mode.equals(WORKER_MODES.WAIT_FOR_CLOUD_EVENT.name())) {
-            //@TODO: register here as consumer.. this is dynamic consumer
-            //mappingsService.registerEventConsumer();
-            //waitForCloudEventType = job.getCustomHeaders().get(Headers.CLOUD_EVENT_WAIT_TYPE);
+    @Autowired
+    private JobClient jobClient;
 
-
-            mappingsService.addPendingJob(String.valueOf(job.getWorkflowKey()), String.valueOf(job.getWorkflowInstanceKey()), String.valueOf(job.getKey()));
-            //@TODO: notify the job client that the job was forwarded to an external system. In Node Client this is something like jobCount--;
-            //jobClient.newForwardedCommand()..
-            emitCloudEventHTTP(job, host);
-        } else if (mode == null || mode.equals("") || mode.equals(WORKER_MODES.EMIT_ONLY.name())) {
-            jobClient.newCompleteCommand(job.getKey()).send().join();
-            emitCloudEventHTTP(job, host);
-        }
-
-
-    }
-    //@TODO: refactor to helper class
-    private void emitCloudEventHTTP(ActivatedJob job, String host) {
-
-        final CloudEvent<AttributesImpl, String> myCloudEvent = ZeebeCloudEventsHelper.createZeebeCloudEventFromJob(job);
-
-        log.info(Json.encode(myCloudEvent));
-
-        WebClient webClient = WebClient.builder().baseUrl(host).filter(logRequest()).build();
-
-        WebClient.ResponseSpec postCloudEvent = CloudEventsHelper.createPostCloudEvent(webClient, "/", myCloudEvent);
-
-        postCloudEvent.bodyToMono(String.class).doOnError(t -> t.printStackTrace())
-                .doOnSuccess(s -> log.info("Result -> " + s)).subscribe();
-    }
-
-    //@TODO: refactor to helper class
-    private static ExchangeFilterFunction logRequest() {
-        return ExchangeFilterFunction.ofRequestProcessor(clientRequest -> {
-            log.info("Request: " + clientRequest.method() + " - " + clientRequest.url());
-            clientRequest.headers().forEach((name, values) -> values.forEach(value -> log.info(name + "=" + value)));
-            return Mono.just(clientRequest);
-        });
-    }
-
-    //@TODO: refactor to worker class
-    private static void logJob(final ActivatedJob job) {
-        log.info(
-                "complete job\n>>> [type: {}, key: {}, element: {}, workflow instance: {}]\n{deadline; {}]\n[headers: {}]\n[variables: {}]",
-                job.getType(),
-                job.getKey(),
-                job.getElementId(),
-                job.getWorkflowInstanceKey(),
-                Instant.ofEpochMilli(job.getDeadline()),
-                job.getCustomHeaders(),
-                job.getVariables());
-    }
-
-    //@TODO: create controller class
     @GetMapping("/jobs")
     public String printPendingJobs() {
         Map<String, Map<String, Set<String>>> jobs = mappingsService.getAllPendingJobs();
@@ -123,7 +38,6 @@ public class ZeebeCloudEventsWorker {
                 .collect(Collectors.joining(", ", "{", "}"));
     }
 
-    //@TODO: create controller class
     @GetMapping("/messages")
     public String messages() {
         Map<String, Set<String>> allExpectedBPMNMessages = mappingsService.getAllMessages();
@@ -132,7 +46,6 @@ public class ZeebeCloudEventsWorker {
                 .collect(Collectors.joining(", ", "{", "}"));
     }
 
-    //@TODO: create controller class
     @PostMapping("/")
     public String recieveCloudEvent(@RequestHeader Map<String, String> headers, @RequestBody Object body) {
         CloudEvent<AttributesImpl, String> cloudEvent = ZeebeCloudEventsHelper.parseZeebeCloudEventFromRequest(headers, body);
@@ -173,20 +86,16 @@ public class ZeebeCloudEventsWorker {
         return "OK!";
     }
 
-    //@TODO: create controller class
     @PostMapping("/workflows")
     public void addStartWorkflowCloudEventMapping(@RequestBody WorkflowByCloudEvent wbce){
-
         mappingsService.registerStartWorkflowByCloudEvent(wbce.getCloudEventType(), Long.valueOf(wbce.getWorkflowKey()));
     }
 
-    //@TODO: create controller class
     @GetMapping("/workflows")
     public Map<String, Long> getStartWorkflowCloudEventMapping(){
         return mappingsService.getStartWorkflowByCloudEvents();
     }
 
-    //@TODO: create controller class
     @PostMapping("/workflow")
     public void startWorkflow(@RequestHeader Map<String, String> headers, @RequestBody Map<String, String> body) {
         CloudEvent<AttributesImpl, String> cloudEvent = CloudEventsHelper.parseFromRequest(headers, body);
@@ -197,7 +106,6 @@ public class ZeebeCloudEventsWorker {
         }
     }
 
-    //@TODO: create controller class
     @PostMapping("/messages")
     public void addExpectedMessage(@RequestBody MessageForWorkflowKey messageForWorkflowKey) {
         //@TODO: Next step check and advertise which messages are expected by which workflows
@@ -205,7 +113,6 @@ public class ZeebeCloudEventsWorker {
         mappingsService.addMessageForWorkflowKey(messageForWorkflowKey.getWorkflowKey(), messageForWorkflowKey.getMessageName());
     }
 
-    //@TODO: create controller class
     @PostMapping("/message")
     public String recieveCloudEventForMessage(@RequestHeader Map<String, String> headers, @RequestBody Object body) {
         CloudEvent<AttributesImpl, String> cloudEvent = ZeebeCloudEventsHelper.parseZeebeCloudEventFromRequest(headers, body);
@@ -226,6 +133,4 @@ public class ZeebeCloudEventsWorker {
         // @TODO: decide on return types
         return "OK!";
     }
-
-
 }

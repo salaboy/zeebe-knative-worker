@@ -1,4 +1,4 @@
-package com.salaboy.zeebe.knative;
+package io.zeebe.cloud.events.router;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;

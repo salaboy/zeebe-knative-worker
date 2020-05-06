@@ -1,4 +1,4 @@
-package com.salaboy.zeebe.knative;
+package io.zeebe.cloud.events.router;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -7,7 +7,7 @@ import org.springframework.test.context.junit4.SpringRunner;
 
 @RunWith(SpringRunner.class)
 @SpringBootTest
-public class ZeebeCloudEventsWorkerTests {
+public class ZeebeCloudEventsRouterAppTests {
 
 	@Test
 	public void contextLoads() {

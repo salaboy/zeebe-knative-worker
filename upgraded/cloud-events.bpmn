@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" exporter="Zeebe Modeler" exporterVersion="0.6.2" expressionLanguage="http://www.w3.org/1999/XPath" id="Definitions_0fvjb4w" targetNamespace="http://bpmn.io/schema/bpmn" typeLanguage="http://www.w3.org/2001/XMLSchema">
+  <bpmn:process id="CLOUD_EVENTS" isClosed="false" isExecutable="true" name="Hello World Cloud Events" processType="None">
+    <bpmn:startEvent id="StartEvent_1" isInterrupting="true" parallelMultiple="false">
+      <bpmn:outgoing>SequenceFlow_17wrpty</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:serviceTask completionQuantity="1" id="ServiceTask_1i15zd5" implementation="##WebService" isForCompensation="false" name="Hello World Cloud Events" startQuantity="1">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="knative"/>
+        <zeebe:taskHeaders>
+          <zeebe:header key="host" value="http://knative-hello-world.default.34.91.23.89.xip.io"/>
+          <zeebe:header key="type" value="generic"/>
+          <zeebe:header/>
+        </zeebe:taskHeaders>
+      </bpmn:extensionElements>
+      <bpmn:incoming>SequenceFlow_17wrpty</bpmn:incoming>
+      <bpmn:outgoing>SequenceFlow_0m2b39g</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="SequenceFlow_17wrpty" sourceRef="StartEvent_1" targetRef="ServiceTask_1i15zd5"/>
+    <bpmn:endEvent id="EndEvent_0fsarzg">
+      <bpmn:incoming>SequenceFlow_0m2b39g</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="SequenceFlow_0m2b39g" sourceRef="ServiceTask_1i15zd5" targetRef="EndEvent_0fsarzg"/>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane bpmnElement="CLOUD_EVENTS" id="BPMNPlane_1">
+      <bpmndi:BPMNShape bpmnElement="StartEvent_1" id="_BPMNShape_StartEvent_2">
+        <dc:Bounds height="36" width="36" x="179" y="103"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape bpmnElement="ServiceTask_1i15zd5" id="ServiceTask_1i15zd5_di">
+        <dc:Bounds height="80" width="100" x="265" y="81"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge bpmnElement="SequenceFlow_17wrpty" id="SequenceFlow_17wrpty_di">
+        <di:waypoint x="215" y="121"/>
+        <di:waypoint x="265" y="121"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape bpmnElement="EndEvent_0fsarzg" id="EndEvent_0fsarzg_di">
+        <dc:Bounds height="36" width="36" x="415" y="103"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge bpmnElement="SequenceFlow_0m2b39g" id="SequenceFlow_0m2b39g_di">
+        <di:waypoint x="365" y="121"/>
+        <di:waypoint x="415" y="121"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
